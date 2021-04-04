@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -16,19 +16,77 @@ namespace MultiDetector
         private Dictionary<Model, string> pedsModels, objectsModels;
         private Dictionary<int, string> pedsVoices;
         private List<string> pedsBones, vehiclesBones;
-        private int affLimiter = 0, limiter = 10, r = 255, g = 150, b = 150, a = 180, mr = 255, mg = 150, mb = 150, ma = 90;
+        private Dictionary<string, string> clothesBones = new Dictionary<string, string>()
+        {
+            { "ears_1","BONETAG_R_CLAVICLE" },
+            { "ears_2","BONETAG_L_CLAVICLE" },
+            { "tshirt_1","BONETAG_SPINE1" },
+            { "tshirt_2","BONETAG_SPINE" },
+            { "torso_1","BONETAG_SPINE" },
+            { "torso_2","BONETAG_SPINE_ROOT" },
+            { "pants_1","BONETAG_R_CALF" },
+            { "pants_2","BONETAG_L_CALF" },
+            { "watches_1","BONETAG_R_PH_HAND" },
+            { "watches_2","BONETAG_L_PH_HAND" },
+            { "shoes_1","BONETAG_R_PH_FOOT" },
+            { "shoes_2","BONETAG_L_PH_FOOT" },
+            { "mask_1","BONETAG_HEAD" },
+            { "mask_2","BONETAG_NECK" },
+            { "bproof_1","BONETAG_SPINE1" },
+            { "bproof_2","BONETAG_SPINE" },
+            { "chain_1","BONETAG_SPINE2" },
+            { "chain_2","BONETAG_SPINE2" },
+            { "helmet_1","BONETAG_HEAD" },
+            { "helmet_2","BONETAG_NECK" },
+            { "glasses_1","BONETAG_HEAD" },
+            { "glasses_2","BONETAG_NECK" },
+            { "bags_1","BONETAG_R_FINGER31" },
+            { "bags_2","BONETAG_L_FINGER31" },
+            { "arms","BONETAG_SPINE" },
+        };
+        private Dictionary<string, int> variations = new Dictionary<string, int>()
+        {
+            { "ears_1", 2 },
+            { "ears_2", 2 },
+            { "tshirt_1", 8 },
+            { "tshirt_2", 8 },
+            { "torso_1", 11 },
+            { "torso_2", 11 },
+            { "pants_1", 4 },
+            { "pants_2", 4 },
+            { "watches_1", 6 },
+            { "watches_2", 6 },
+            { "shoes_1", 6 },
+            { "shoes_2", 6 },
+            { "mask_1", 1 },
+            { "mask_2", 1 },
+            { "bproof_1", 9 },
+            { "bproof_2", 9 },
+            { "chain_1", 7 },
+            { "chain_2", 7 },
+            { "helmet_1", 0 },
+            { "helmet_2", 0 },
+            { "glasses_1", 1 },
+            { "glasses_2", 1 },
+            { "bags_1", 5 },
+            { "bags_2", 5 },
+            { "arms", 3 },
+        };
+        private int affLimiter = 0, limiter = 10, clothesLimiter = 2, r = 255, g = 150, b = 150, a = 180, mr = 255, mg = 150, mb = 150, ma = 90;
         private float offsetSize = 0.3f, addValue, defAddValue = 0.0005f;
         private Prop[] propPool;
         private Vehicle[] vehPool;
         private float textSize;
         private Ped[] pedPool;
         private Vector3 vehBonesDecallage = new Vector3(0, 0, -1.5f), pedBonesDecallage = new Vector3(0, 0, -1.7f), offsetCoords = Vector3.Zero;
-        private bool started, showOffsetRunning, showPedsRunning, showPlayersRunning, showObjectsRunning, showVehiclesRunning, showVehicleBonesRunning, showPedBonesRunning;
+        private bool started, showOffsetRunning, showPedsRunning, showPlayersRunning, showObjectsRunning, showVehiclesRunning, showVehicleBonesRunning, showPedBonesRunning, showPedClothesRunning;
+        private string afficherPedsEvent, afficherVehEvent, afficherPlayersEvent, afficherObjEvent, afficherBonesVehicleEvent, afficherBonesPedEvent, afficherOffsetEvent, afficherPedsClothesEvent;
         private List<int> noNetworked = new List<int>(), networked = new List<int>();
         public MultiDetector()
         {
             resourceName = GetCurrentResourceName();
             EventHandlers["onClientResourceStart"] += new Action<string>(ResourceStart);
+            EventHandlers["onClientResourceStop"] += new Action<string>(ResourceSop);
         }
 
         static Predicate<Ped> NotPlayer()
@@ -61,7 +119,7 @@ namespace MultiDetector
         }
         private async Task Pools()
         {
-            if (showPedsRunning)
+            if (showPedsRunning || showPedClothesRunning)
                 pedPool = World.GetAllPeds();
             await Delay(1000);
             if (showVehiclesRunning)
@@ -71,39 +129,48 @@ namespace MultiDetector
                 propPool = World.GetAllProps();
             await Delay(1000);
         }
+        private void ResourceSop(string resname)
+        {
+            if (resname == resourceName)
+            {
+                this.UnregisterEvents();
+            }
+        }
         private void ResourceStart(string resname)
         {
             if (resname == resourceName)
             {
                 addValue = defAddValue;
                 started = false;
-                r = GetConfigKeyValue(resourceName, "multidetector_text_r", 0, 85);
-                g = GetConfigKeyValue(resourceName, "multidetector_text_g", 0, 145);
-                b = GetConfigKeyValue(resourceName, "multidetector_text_b", 0, 198);
-                a = GetConfigKeyValue(resourceName, "multidetector_text_a", 0, 100);
-                mr = GetConfigKeyValue(resourceName, "multidetector_marker_r", 0, 85);
-                mg = GetConfigKeyValue(resourceName, "multidetector_marker_g", 0, 145);
-                mb = GetConfigKeyValue(resourceName, "multidetector_marker_b", 0, 198);
-                ma = GetConfigKeyValue(resourceName, "multidetector_marker_a", 0, 100);
-                int p = GetConfigKeyValue(resourceName, "multidetector_distance", 0, 50);
+                r = configreader.GetConfigKeyValue(resourceName, "multidetector_text_r", 0, 85);
+                g = configreader.GetConfigKeyValue(resourceName, "multidetector_text_g", 0, 145);
+                b = configreader.GetConfigKeyValue(resourceName, "multidetector_text_b", 0, 198);
+                a = configreader.GetConfigKeyValue(resourceName, "multidetector_text_a", 0, 100);
+                mr = configreader.GetConfigKeyValue(resourceName, "multidetector_marker_r", 0, 85);
+                mg = configreader.GetConfigKeyValue(resourceName, "multidetector_marker_g", 0, 145);
+                mb = configreader.GetConfigKeyValue(resourceName, "multidetector_marker_b", 0, 198);
+                ma = configreader.GetConfigKeyValue(resourceName, "multidetector_marker_a", 0, 100);
+                int p = configreader.GetConfigKeyValue(resourceName, "multidetector_distance", 0, 50);
                 portee = new Vector3(p, p, p);
-                p = GetConfigKeyValue(resourceName, "multidetector_objects_distance", 0, 10);
+                p = configreader.GetConfigKeyValue(resourceName, "multidetector_objects_distance", 0, 10);
                 porteeObj = new Vector3(p, p, p);
-                limiter = GetConfigKeyValue(resourceName, "multidetector_show_bones_limit", 0, 10);
-                string afficherPedsCmd = GetConfigKeyValue(resourceName, "multidetector_show_peds_info_command", 0, "");
-                string afficherVehCmd = GetConfigKeyValue(resourceName, "multidetector_show_vehicle_info_command", 0, "");
-                string afficherPlayersCmd = GetConfigKeyValue(resourceName, "multidetector_show_players_info_command", 0, "");
-                string afficherObjCmd = GetConfigKeyValue(resourceName, "multidetector_show_objects_info_command", 0, "");
-                string afficherBonesVehicleCmd = GetConfigKeyValue(resourceName, "multidetector_show_vehicle_bones_command", 0, "");
-                string afficherBonesPedCmd = GetConfigKeyValue(resourceName, "multidetector_show_ped_bones_command", 0, "");
-                string afficherOffsetCmd = GetConfigKeyValue(resourceName, "multidetector_show_offset_command", 0, "");
-                afficherPedsEvent = GetConfigKeyValue(resourceName, "multidetector_show_peds_info_event", 0, "");
-                afficherVehEvent = GetConfigKeyValue(resourceName, "multidetector_show_vehicle_info_event", 0, "");
-                afficherPlayersEvent = GetConfigKeyValue(resourceName, "multidetector_show_players_info_event", 0, "");
-                afficherObjEvent = GetConfigKeyValue(resourceName, "multidetector_show_objects_info_event", 0, "");
-                afficherBonesVehicleEvent = GetConfigKeyValue(resourceName, "multidetector_show_vehicle_bones_event", 0, "");
-                afficherBonesPedEvent = GetConfigKeyValue(resourceName, "multidetector_show_ped_bones_event", 0, "");
-                afficherOffsetEvent = GetConfigKeyValue(resourceName, "multidetector_show_offset_event", 0, "");
+                limiter = configreader.GetConfigKeyValue(resourceName, "multidetector_show_bones_limit", 0, 10);
+                string afficherPedsCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_peds_info_command", 0, "");
+                string afficherVehCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_vehicle_info_command", 0, "");
+                string afficherPlayersCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_players_info_command", 0, "");
+                string afficherObjCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_objects_info_command", 0, "");
+                string afficherBonesVehicleCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_vehicle_bones_command", 0, "");
+                string afficherBonesPedCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_ped_bones_command", 0, "");
+                string afficherOffsetCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_offset_command", 0, "");
+                string afficherPedsCLothesCmd = configreader.GetConfigKeyValue(resourceName, "multidetector_show_peds_clothes_command", 0, "");
+                afficherPedsEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_peds_info_event", 0, "");
+                afficherVehEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_vehicle_info_event", 0, "");
+                afficherPlayersEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_players_info_event", 0, "");
+                afficherObjEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_objects_info_event", 0, "");
+                afficherBonesVehicleEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_vehicle_bones_event", 0, "");
+                afficherBonesPedEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_ped_bones_event", 0, "");
+                afficherOffsetEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_offset_event", 0, "");
+                afficherPedsClothesEvent = configreader.GetConfigKeyValue(resourceName, "multidetector_show_peds_clothes_event", 0, "");
                 if (afficherPedsCmd != "" || afficherPedsEvent != "")
                 {
                     pedsModels = new Dictionary<Model, string>();
@@ -122,9 +189,7 @@ namespace MultiDetector
                         RegisterCommand(afficherPedsCmd, new Action<int, List<object>, string>((source, args, raw) =>
                         {
                             if (IsAceAllowed("command." + afficherPedsCmd) && started)
-                            {
                                 ExecShowPed();
-                            }
                         }), false);
 
                 }
@@ -137,9 +202,7 @@ namespace MultiDetector
                         RegisterCommand(afficherBonesPedCmd, new Action<int, List<object>, string>((source, args, raw) =>
                         {
                             if (IsAceAllowed("command." + afficherBonesPedCmd) && started)
-                            {
                                 ExecShowBonesPeds();
-                            }
                         }), false);
 
                 }
@@ -149,9 +212,7 @@ namespace MultiDetector
                         RegisterCommand(afficherVehCmd, new Action<int, List<object>, string>((source, args, raw) =>
                         {
                             if (IsAceAllowed("command." + afficherVehCmd) && started)
-                            {
                                 ExecShowVehicles();
-                            }
                         }), false);
                 }
                 if (afficherObjCmd != "" || afficherObjEvent != "")
@@ -167,18 +228,14 @@ namespace MultiDetector
                         RegisterCommand(afficherObjCmd, new Action<int, List<object>, string>((source, args, raw) =>
                         {
                             if (IsAceAllowed("command." + afficherObjCmd) && started)
-                            {
                                 ExecShowObjects();
-                            }
                         }), false);
                 }
                 if (afficherPlayersCmd != "")
                     RegisterCommand(afficherPlayersCmd, new Action<int, List<object>, string>((source, args, raw) =>
                     {
                         if (IsAceAllowed("command." + afficherPlayersCmd) && started)
-                        {
                             ExecShowPlayers();
-                        }
                     }), false);
 
                 if (afficherBonesVehicleCmd != "")
@@ -189,9 +246,7 @@ namespace MultiDetector
                     RegisterCommand(afficherBonesVehicleCmd, new Action<int, List<object>, string>((source, args, raw) =>
                     {
                         if (IsAceAllowed("command." + afficherBonesVehicleCmd) && started)
-                        {
                             ExecShowBonesVehicles();
-                        }
                     }), false);
                 }
 
@@ -199,15 +254,30 @@ namespace MultiDetector
                     RegisterCommand(afficherOffsetCmd, new Action<int, List<object>, string>((source, args, raw) =>
                     {
                         if (IsAceAllowed("command." + afficherOffsetCmd) && started)
-                        {
                             ExecShowOffset();
-                        }
                     }), false);
+
+                if (afficherPedsCLothesCmd != "")
+                    RegisterCommand(afficherPedsCLothesCmd, new Action<int, List<object>, string>((source, args, raw) =>
+                    {
+                        if (IsAceAllowed("command." + afficherPedsCLothesCmd) && started)
+                            ExecShowPedClothes();
+                    }), false);
+
                 this.RegisterEvents();
             }
         }
-
-        private string afficherPedsEvent, afficherVehEvent, afficherPlayersEvent, afficherObjEvent, afficherBonesVehicleEvent, afficherBonesPedEvent, afficherOffsetEvent;
+        private void UnregisterEvents()
+        {
+            started = false;
+            this.EventHandlers.Remove(afficherPedsEvent);
+            this.EventHandlers.Remove(afficherVehEvent);
+            this.EventHandlers.Remove(afficherPlayersEvent);
+            this.EventHandlers.Remove(afficherObjEvent);
+            this.EventHandlers.Remove(afficherBonesVehicleEvent);
+            this.EventHandlers.Remove(afficherBonesPedEvent);
+            this.EventHandlers.Remove(afficherOffsetEvent);
+        }
         private void RegisterEvents()
         {
             started = true;
@@ -225,6 +295,8 @@ namespace MultiDetector
                 this.EventHandlers.Add(afficherBonesVehicleEvent, new Action(ExecShowBonesVehicles));
             if (afficherOffsetEvent != "")
                 this.EventHandlers.Add(afficherOffsetEvent, new Action(ExecShowOffset));
+            if (afficherPedsClothesEvent != "")
+                this.EventHandlers.Add(afficherPedsClothesEvent, new Action(ExecShowPedClothes));
         }
 
         private void ExecShowPlayers()
@@ -243,12 +315,12 @@ namespace MultiDetector
                 noNetworked.Clear();
                 networked.Clear();
                 vehPool = null;
-                if (!showPedBonesRunning && !showObjectsRunning)
+                if (!showPedBonesRunning && !showObjectsRunning && !showPedClothesRunning)
                     Tick -= Pools;
             }
             else
             {
-                if (!showPedBonesRunning && !showObjectsRunning)
+                if (!showPedBonesRunning && !showObjectsRunning && !showPedClothesRunning)
                     Tick += Pools;
 
                 Tick += ShowVehicles;
@@ -263,11 +335,11 @@ namespace MultiDetector
                 noNetworked.Clear();
                 networked.Clear();
                 propPool = null;
-                if (!showPedBonesRunning && !showVehiclesRunning)
+                if (!showPedBonesRunning && !showVehiclesRunning && !showPedClothesRunning)
                     Tick -= Pools;
             }
             else {
-                if (!showPedBonesRunning && !showVehiclesRunning)
+                if (!showPedBonesRunning && !showVehiclesRunning && !showPedClothesRunning)
                     Tick += Pools;
                 Tick += ShowObjects;
             }
@@ -335,16 +407,79 @@ namespace MultiDetector
                 noNetworked.Clear();
                 networked.Clear();
                 pedPool = null;
-                if (!showVehiclesRunning && !showObjectsRunning)
+                if (!showVehiclesRunning && !showObjectsRunning && !showPedClothesRunning)
                     Tick -= Pools;
             }
             else {
-                if (!showVehiclesRunning && !showObjectsRunning)
+                if (!showVehiclesRunning && !showObjectsRunning && !showPedClothesRunning)
                     Tick += Pools;
                 Tick += ShowPeds;
             }
             showPedsRunning = !showPedsRunning;
         }
+        private async void ExecShowPedClothes()
+        {
+            affLimiter = 0;
+            if (showPedClothesRunning)
+            {
+                Tick -= ShowPedsClothes;
+                noNetworked.Clear();
+                networked.Clear();
+                pedPool = null;
+                if (!showVehiclesRunning && !showObjectsRunning && !showPedsRunning)
+                    Tick -= Pools;
+            }
+            else
+            {
+                textSize = 0.08f;
+                if (!showVehiclesRunning && !showObjectsRunning && !showPedsRunning)
+                    Tick += Pools;
+                Tick += ShowPedsClothes;
+            }
+            showPedClothesRunning = !showPedClothesRunning;
+        }
+
+        private int GetComponentVariation(Ped ent, string elem)
+        {
+            if (elem.EndsWith("1"))
+                if (elem.Contains("ears") || elem.Contains("watches") || elem.Contains("helmet") || elem.Contains("glasses"))
+                    return GetPedPropIndex(ent.Handle, variations[elem]);
+                else
+                    return GetPedDrawableVariation(ent.Handle, variations[elem]);
+            else
+                if (elem.Contains("ears") || elem.Contains("watches") || elem.Contains("helmet") || elem.Contains("glasses"))
+                return GetPedPropTextureIndex(ent.Handle, variations[elem]);
+            else
+                return GetPedTextureVariation(ent.Handle, variations[elem]);
+        }
+        private async Task ShowPedsClothes()
+        {
+            while (pedPool == null)
+                await Delay(500);
+
+            var pool = pedPool;
+            InvalidateIdleCam();
+            await ShowLimiterSf(clothesBones.Count);
+            pool.ToList().FindAll(Prox()).ForEach(async elem => {
+                if (elem.IsNearEntity(Game.PlayerPed, portee) && IsEntityOnScreen(elem.Handle))
+                {
+                    int it = 0;
+                    for (int i = affLimiter * clothesLimiter; i < (affLimiter * clothesLimiter + clothesLimiter < clothesBones.Count ? affLimiter * clothesLimiter + clothesLimiter : clothesBones.Count); i++)
+                    {
+                        int bone = GetEntityBoneIndexByName(elem.Handle, clothesBones.ElementAt(i).Value);
+                        Vector3 coords = GetWorldPositionOfEntityBone(elem.Handle, bone);
+
+                        if (coords != Vector3.Zero)
+                        {
+                            Draw3DText(coords + pedBonesDecallage + new Vector3(0,0,-0.15f*it), clothesBones.ElementAt(i).Key + ": " + GetComponentVariation(elem, clothesBones.ElementAt(i).Key), 213, 84, 230, 255, 4, textSize, textSize);
+                            it++;
+                        }
+                    }
+                }
+            });
+            ControlLimiter(clothesBones.Count);
+        }
+
         private async Task ShowPeds()
         {
             while (pedPool == null)
@@ -510,10 +645,16 @@ namespace MultiDetector
             scaleform.CallFunction("SET_DATA_SLOT", 0, GetControlInstructionalButton(2, 177, 0), "Quit");
             scaleform.CallFunction("SET_DATA_SLOT", 1, GetControlInstructionalButton(2, 14, 0), "Text size +");
             scaleform.CallFunction("SET_DATA_SLOT", 2, GetControlInstructionalButton(2, 16, 0), "Text size -");
-            scaleform.CallFunction("SET_DATA_SLOT", 3, GetControlInstructionalButton(2, 175, 0), "Marker size +");
-            scaleform.CallFunction("SET_DATA_SLOT", 4, GetControlInstructionalButton(2, 174, 0), "Marker size -");
+            if (!showPedClothesRunning)
+            {
+                scaleform.CallFunction("SET_DATA_SLOT", 3, GetControlInstructionalButton(2, 175, 0), "Marker size +");
+                scaleform.CallFunction("SET_DATA_SLOT", 4, GetControlInstructionalButton(2, 174, 0), "Marker size -");
+            }
             scaleform.CallFunction("SET_DATA_SLOT", 5, GetControlInstructionalButton(2, 172, 0), "Next");
-            scaleform.CallFunction("SET_DATA_SLOT", 6, GetControlInstructionalButton(2, 173, 0), affLimiter * limiter + 1 + "-" + (affLimiter * limiter + limiter < total ? affLimiter * limiter + limiter : total) + "/" + total + "    Previous");
+            if (!showPedClothesRunning)
+                scaleform.CallFunction("SET_DATA_SLOT", 6, GetControlInstructionalButton(2, 173, 0), affLimiter * limiter + 1 + "-" + (affLimiter * limiter + limiter < total ? affLimiter * limiter + limiter : total) + "/" + total + "    Previous");
+            else
+                scaleform.CallFunction("SET_DATA_SLOT", 6, GetControlInstructionalButton(2, 173, 0), affLimiter * clothesLimiter + 1 + "-" + (affLimiter * clothesLimiter + clothesLimiter < total ? affLimiter * clothesLimiter + clothesLimiter : total) + "/" + total + "    Previous");
             scaleform.CallFunction("DRAW_INSTRUCTIONAL_BUTTONS", -1);
         }
         private async Task ShowLimiterSf(int total)
@@ -557,18 +698,21 @@ namespace MultiDetector
             DisableAllControls();
             if (IsDisabledControlJustPressed(0, 172)) 
             {
-                affLimiter = affLimiter== total / limiter ? 0:(affLimiter + 1) >= total/limiter ? total / limiter : (affLimiter + 1);
+                affLimiter = affLimiter== total / (showPedClothesRunning ? clothesLimiter : limiter) ? 0:(affLimiter + 1) >= total/ (showPedClothesRunning ? clothesLimiter : limiter) ? total / (showPedClothesRunning ? clothesLimiter : limiter) : (affLimiter + 1);
                 Recalc(total);
             }
             if (IsDisabledControlJustPressed(0, 173))
             {
-                affLimiter = affLimiter - 1 >= 0 ? affLimiter - 1 : total / limiter;
+                affLimiter = affLimiter - 1 >= 0 ? affLimiter - 1 : total / (showPedClothesRunning? clothesLimiter: limiter);
                 Recalc(total);
             }
-            if (IsDisabledControlPressed(0, 174))
-                offsetSize -= 0.0025f;
-            if (IsDisabledControlPressed(0, 175))
-                offsetSize += 0.0025f;
+            if (!showPedClothesRunning)
+            {
+                if (IsDisabledControlPressed(0, 174))
+                    offsetSize -= 0.0025f;
+                if (IsDisabledControlPressed(0, 175))
+                    offsetSize += 0.0025f;
+            }
             if (IsDisabledControlPressed(0, 14) || IsDisabledControlPressed(0, 16))
                 textSize -= 0.01f;
             if (IsDisabledControlPressed(0, 15) || IsDisabledControlPressed(0, 17))
@@ -580,6 +724,8 @@ namespace MultiDetector
                     ExecShowBonesPeds();
                 else if (showVehicleBonesRunning)
                     ExecShowBonesVehicles();
+                else if (showPedClothesRunning)
+                    ExecShowPedClothes();
         }
         private async Task ShowOffset()
         {
@@ -712,6 +858,21 @@ namespace MultiDetector
             EnableControlAction(0, 0, true);
             EnableControlAction(0, 1, true);
             EnableControlAction(0, 2, true);
+            if (showPedClothesRunning)
+            {
+                EnableControlAction(0, 32, true);
+                EnableControlAction(0, 33, true);
+                EnableControlAction(0, 34, true);
+                EnableControlAction(0, 35, true);
+                EnableControlAction(1, 32, true);
+                EnableControlAction(1, 33, true);
+                EnableControlAction(1, 34, true);
+                EnableControlAction(1, 35, true);
+                EnableControlAction(2, 32, true);
+                EnableControlAction(2, 33, true);
+                EnableControlAction(2, 34, true);
+                EnableControlAction(2, 35, true);
+            }
         }
 
         private void Draw3DText(Vector3 pos, string textInput, int r, int g, int b, int a, int fontId, float scaleX, float scaleY)
@@ -737,21 +898,23 @@ namespace MultiDetector
             DrawText(0.0f, 0.0f);
             ClearDrawOrigin();
         }
-        
-        public static T GetConfigKeyValue<T>(string resourceName, string metadataKey, int index, T defaultValue)
+        class configreader
         {
-            var result = defaultValue;
-            try
+            public static T GetConfigKeyValue<T>(string resourceName, string metadataKey, int index, T defaultValue)
             {
-                var input = GetResourceMetadata(resourceName, metadataKey, index);
-                result = (T)System.ComponentModel.TypeDescriptor.GetConverter(typeof(T)).ConvertFromString(input);
+                var result = defaultValue;
+                try
+                {
+                    var input = GetResourceMetadata(resourceName, metadataKey, index);
+                    result = (T)System.ComponentModel.TypeDescriptor.GetConverter(typeof(T)).ConvertFromString(input);
+                }
+                catch (Exception) {}
+                return result;
             }
-            catch (Exception) {}
-            return result;
-        }
-        public static T GetConfigKeyValue<T>(string resourceName, string metadataKey, int index)
-        {
-            return GetConfigKeyValue(resourceName, metadataKey, index, default(T));
+            public static T GetConfigKeyValue<T>(string resourceName, string metadataKey, int index)
+            {
+                return GetConfigKeyValue(resourceName, metadataKey, index, default(T));
+            }
         }
     }
 }
